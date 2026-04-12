@@ -133,8 +133,9 @@ def explain_content(user_id, recommended_movie_id):
 
 # ── Recommendation functions ─────────────────────────────────────
 def get_svd_recs(user_id, n=10):
-    rated   = ratings[ratings['userId'] == int(user_id)]['movieId'].tolist()
-    unrated = [m for m in movies['movieId'].tolist() if m not in rated]
+    rated = ratings[ratings['userId'] == int(user_id)]['movieId'].tolist()
+    seen  = get_seen_movies(user_id)
+    unrated = [m for m in movies['movieId'].tolist() if m not in rated and m not in seen]
     preds   = [best_svd.predict(int(user_id), mid) for mid in unrated]
     preds.sort(key=lambda x: x.est, reverse=True)
     results = []
@@ -150,9 +151,11 @@ def get_content_recs(user_id, n=10):
     if not liked:
         liked = ratings[ratings['userId'] == uid]['movieId'].tolist()
 
-    rated      = ratings[ratings['userId'] == uid]['movieId'].tolist()
+    rated = ratings[ratings['userId'] == uid]['movieId'].tolist()
+    seen  = get_seen_movies(user_id)
+
     sim_scores = movie_sim_df[liked].mean(axis=1)
-    sim_scores = sim_scores.drop(index=[m for m in rated if m in sim_scores.index], errors='ignore')
+    sim_scores = sim_scores.drop(index=[m for m in rated + seen if m in sim_scores.index], errors='ignore')
     top_movies = sim_scores.nlargest(n).index.tolist()
 
     results = []
@@ -264,6 +267,16 @@ def results():
         }
 
     return jsonify(summary)
+
+def get_seen_movies(user_id):
+    con = sqlite3.connect('logs.db')
+    df = pd.read_sql(
+        "SELECT movie_id FROM events WHERE user_id=? AND event IN ('like','dislike')",
+        con,
+        params=(str(user_id),)
+    )
+    con.close()
+    return df['movie_id'].tolist()
 
 @app.route('/reset')
 def reset():
