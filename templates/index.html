@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Movie Recommender</title>
+    <style>
+        body       { font-family: sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; }
+        .movie-card { border: 1px solid #ddd; padding: 15px; margin: 10px 0;
+                      border-radius: 8px; cursor: pointer; transition: background 0.2s; }
+        .movie-card:hover { background: #f9f9f9; }
+        .badge     { background: #4A90D9; color: white; padding: 3px 8px;
+                     border-radius: 4px; font-size: 12px; }
+        .cold-badge { background: #27AE60; }
+        .info      { color: #888; font-size: 13px; margin: 5px 0 0; }
+        .reset-btn { float: right; background: none; border: 1px solid #ddd;
+                     padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+    </style>
+</head>
+<body>
+    <h1>🎬 Movie Recommendations
+        <button class="reset-btn" onclick="window.location.href='/reset'">Reset session</button>
+    </h1>
+    <p>User: <strong>{{ user_id }}</strong> |
+       Variant: <strong class="badge" id="variant-badge">{{ variant }}</strong></p>
+    <div id="recs"></div>
+
+<script>
+    fetch('/recommendations')
+        .then(r => r.json())
+        .then(data => {
+            const container = document.getElementById('recs');
+
+            // Cold start — show genre survey
+            if (data.show_survey) {
+                const genres = [
+                    'Action','Adventure','Animation','Children','Comedy',
+                    'Crime','Documentary','Drama','Fantasy','Film-Noir',
+                    'Horror','Musical','Mystery','Romance','Sci-Fi',
+                    'Thriller','War','Western'
+                ];
+                container.innerHTML = `
+                    <h3>👋 Welcome! Pick your favourite genres:</h3>
+                    <div id="genre-grid" style="display:flex;flex-wrap:wrap;gap:12px;margin:20px 0;">
+                        ${genres.map(g => `
+                            <label style="cursor:pointer;padding:8px 12px;border:1px solid #ddd;
+                                          border-radius:6px;">
+                                <input type="checkbox" value="${g}"> ${g}
+                            </label>
+                        `).join('')}
+                    </div>
+                    <button onclick="submitSurvey()"
+                        style="background:#4A90D9;color:white;padding:12px 24px;
+                               border:none;border-radius:6px;cursor:pointer;font-size:15px;">
+                        Get Recommendations →
+                    </button>
+                `;
+                return;
+            }
+
+            // Render recommendation cards
+            data.recommendations.forEach(movie => {
+                const card = document.createElement('div');
+                card.className = 'movie-card';
+
+                card.innerHTML = `
+                    <strong>${movie.title}</strong><br>
+                    <small>${movie.genres}</small>
+                    ${movie.explanation ? `<p class="info">💡 ${movie.explanation}</p>` : ''}
+
+                    <div style="margin-top:10px;">
+                        <button onclick="sendFeedback(${movie.id}, 'like')">👍 Like</button>
+                        <button onclick="sendFeedback(${movie.id}, 'dislike')">👎 Dislike</button>
+                    </div>
+                `;
+
+                container.appendChild(card);
+            });
+        });
+
+    function sendFeedback(movieId, action) {
+        fetch('/feedback', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                movie_id: movieId,
+                action: action
+            })
+        }).then(() => {
+            location.reload(); // 🔥 refresh for new recommendations
+        });
+    }
+
+    function submitSurvey() {
+        const checked = [...document.querySelectorAll('#genre-grid input:checked')]
+            .map(el => el.value);
+        if (checked.length === 0) {
+            alert('Please select at least one genre!');
+            return;
+        }
+        fetch('/survey', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({genres: checked})
+        }).then(() => location.reload());
+    }
+</script>
+</body>
+</html>

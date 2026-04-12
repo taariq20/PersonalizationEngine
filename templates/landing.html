@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Movie Recommender</title>
+    <style>
+        body { font-family: sans-serif; max-width: 500px; margin: 100px auto; 
+               text-align: center; padding: 0 20px; }
+        .btn { display: block; padding: 20px 30px; margin: 15px 0; border: none;
+               border-radius: 8px; font-size: 16px; cursor: pointer; width: 100%; }
+        .btn-new      { background: #4A90D9; color: white; }
+        .btn-existing { background: #E74C3C; color: white; }
+        .btn:hover    { opacity: 0.9; }
+        small         { display: block; margin-top: 5px; opacity: 0.8; }
+    </style>
+</head>
+<body>
+    <h1>🎬 Movie Recommender</h1>
+    <p>How do you want to start?</p>
+
+    <button class="btn btn-new" onclick="start('new')">
+        👤 I'm a new user
+        <small>Start from scratch — pick your favourite genres</small>
+    </button>
+
+    <button class="btn btn-existing" onclick="start('existing')">
+        🎬 I'm an existing user
+        <small>Use a MovieLens user's rating history</small>
+    </button>
+
+    <script>
+        function start(type) {
+            fetch('/start', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({user_type: type})
+            }).then(() => window.location.href = '/home');
+        }
+    </script>
+</body>
+</html>
