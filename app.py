@@ -11,7 +11,11 @@ best_svd = joblib.load('best_svd.pkl')
 
 movies  = pd.read_csv('movies.csv')
 ratings = pd.read_csv('ratings.csv')
-
+# ── Load content based data ──────────────────────────────────────────
+content_data =joblib.load("movie_recommender.joblib")
+movies =content_data['movies'] 
+cosine_sim =content_data['cosine_sim']
+movie_idx =content_data['movie_idx']
 # Build content similarity matrix
 movies['genre_list'] = movies['genres'].str.split('|')
 mlb          = MultiLabelBinarizer()
