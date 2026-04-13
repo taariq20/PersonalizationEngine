@@ -145,24 +145,41 @@ def get_svd_recs(user_id, n=10):
     return results
 
 def get_content_recs(user_id, n=10):
-    uid   = int(user_id)
-    liked = ratings[(ratings['userId'] == uid) &
-                    (ratings['rating'] >= 4)]['movieId'].tolist()
-    if not liked:
-        liked = ratings[ratings['userId'] == uid]['movieId'].tolist()
+     uid = int(user_id)
+    liked_ids = ratings[(ratings['userId'] ==uid) &(ratings['rating'] >=4)]['movieId'].tolist()
+    if not liked_ids:
+        liked_ids= ratings[ratings['userId']== uid]['movieId'].tolist()
+    rated =ratings[ratings['userId']== uid]['movieId'].tolist()
+    seen =get_seen_movies(user_id)
+    exclude_ids= list(set(rated+ seen))
 
-    rated = ratings[ratings['userId'] == uid]['movieId'].tolist()
-    seen  = get_seen_movies(user_id)
+    if liked_ids:
+        liked_titles = movies.filter(pl.col("movieId").is_in(liked_ids))["title"].to_list()
+        liked_indices = [movie_idx[t] for t in liked_titles if t in movie_idx]
+        if not liked_indices:
+            return []
 
-    sim_scores = movie_sim_df[liked].mean(axis=1)
-    sim_scores = sim_scores.drop(index=[m for m in rated + seen if m in sim_scores.index], errors='ignore')
-    top_movies = sim_scores.nlargest(n).index.tolist()
-
-    results = []
-    for mid in top_movies:
-        row = movies[movies['movieId'] == mid].iloc[0]
-        results.append({'id': int(mid), 'title': row['title'], 'genres': row['genres']})
-    return results
+        avg_sim_scores = np.mean([cosine_sim[i] for i in liked_indices], axis=0)
+        sim_scores = sorted(list(enumerate(avg_sim_scores)), key=lambda x: x[1], reverse=True)
+        final_recs_indices = []
+        for idx_score, score in sim_scores:
+            m_id = movies[idx_score]["movieId"][0]
+            if m_id not in exclude_ids:
+                final_recs_indices.append(idx_score)
+            
+            if len(final_recs_indices) >= n:
+                break         
+        results = (
+            movies[final_recs_indices]
+            .with_columns(pl.col("genres").list.join("|").alias("genres"))
+            .select(["movieId", "title", "genres"])
+        )
+        return [
+            {'id': int(row['movieId']), 'title': row['title'], 'genres': row['genres']} 
+            for row in results.to_dicts()
+        ]
+        
+    return []
 
 # ── Routes ────────────────────────────────────────────────────────
 @app.route('/')
