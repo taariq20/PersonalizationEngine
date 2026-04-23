@@ -1,4 +1,4 @@
-flask
+streamlit
 scikit-surprise
 scikit-learn
 pandas
