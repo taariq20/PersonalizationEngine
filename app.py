@@ -549,8 +549,7 @@ def get_svd_recs(user_id, n=10):
         return get_cold_start_recs(pref, n, user_id)
     unrated = [m for m in movies['movieId'].tolist() if m not in rated and m not in seen]
     preds = [best_svd.predict(uid, mid) for mid in unrated]
-    popularity = ratings.groupby('movieId').size().to_dict()
-    preds.sort(key=lambda x: (popularity.get(x.iid, 0), x.est), reverse=True)
+    preds.sort(key=lambda x: x.est, reverse=True)
     results = []
     for pred in preds[:n]:
         row = movies[movies['movieId'] == pred.iid].iloc[0]
@@ -741,32 +740,46 @@ def results_page():
         st.warning('No data yet – go interact with recommendations first!')
         return
 
-    # Compute summary statistics
+    # Compute per‑variant metrics
     summary = {}
     for v in VARIANTS:
         sub = df[df['variant'] == v]
         imp = len(sub[sub['event'] == 'impression'])
         like = len(sub[sub['event'] == 'like'])
+        dislike = len(sub[sub['event'] == 'dislike'])
+        like_rate = like / imp if imp > 0 else 0
         summary[v] = {
             'impressions': imp,
             'likes': like,
-            'like_rate': like / imp if imp > 0 else 0
+            'dislikes': dislike,
+            'like_rate': like_rate,
+            'total_interactions': like + dislike,
         }
 
-    # Only consider variants with impressions
+    # Only show models that have impressions
     active = [v for v in VARIANTS if summary[v]['impressions'] > 0]
-    if len(active) < 2:
-        st.info('Need data for at least two variants to compare.')
+    if len(active) == 0:
+        st.info('No interaction data yet. Start using the app!')
         return
 
-    # Prepare data
-    variants = active
-    like_rates = [summary[v]['like_rate'] for v in variants]
-    likes = [summary[v]['likes'] for v in variants]
-    impressions = [summary[v]['impressions'] for v in variants]
-    labels = [VARIANT_LABELS.get(v, v) for v in variants]
+    # Display metrics in columns
+    st.subheader('📈 Model Performance')
+    cols = st.columns(len(active))
+    for col, v in zip(cols, active):
+        s = summary[v]
+        with col:
+            st.metric(f"{VARIANT_LABELS.get(v, v)}", f"{s['like_rate']:.2%}", 
+                      help=f"Like rate = {s['likes']} / {s['impressions']} impressions")
+            st.caption(f"👍 {s['likes']} likes · 👎 {s['dislikes']} dislikes · 👁️ {s['impressions']} views")
+            if s['total_interactions'] > 0:
+                st.caption(f"✍️ {s['total_interactions']} total reactions")
 
-    # Compute 95% credible intervals using Beta distribution
+    # Bar chart of like rates with 95% credible intervals
+    like_rates = [summary[v]['like_rate'] for v in active]
+    likes = [summary[v]['likes'] for v in active]
+    impressions = [summary[v]['impressions'] for v in active]
+    labels = [VARIANT_LABELS.get(v, v) for v in active]
+
     lower_bounds = []
     upper_bounds = []
     for l, n in zip(likes, impressions):
@@ -779,7 +792,6 @@ def results_page():
             lower_bounds.append(0)
             upper_bounds.append(0)
 
-    # --- Interactive bar chart ---
     fig = go.Figure()
     fig.add_trace(go.Bar(
         x=labels,
@@ -807,14 +819,22 @@ def results_page():
         template='plotly_white'
     )
     st.plotly_chart(fig, use_container_width=True)
+    
+    fig2 = go.Figure()
+    fig2.add_trace(go.Bar(name='Likes', x=labels, y=[summary[v]['likes'] for v in active], marker_color='green'))
+    fig2.add_trace(go.Bar(name='Dislikes', x=labels, y=[summary[v]['dislikes'] for v in active], marker_color='red'))
+    fig2.update_layout(barmode='group', title='Likes vs Dislikes per Model', template='plotly_white')
+    st.plotly_chart(fig2, use_container_width=True)
 
     # --- Identify leader ---
     best_idx = np.argmax(like_rates)
-    best_variant = variants[best_idx]
+    best_variant = active[best_idx]
     best_name = VARIANT_LABELS.get(best_variant, best_variant.capitalize())
     best_rate = like_rates[best_idx]
 
-    # --- Leader description ---
+    st.success(f"🏆 **Current leader: {best_name}** ({best_rate:.2%} like rate)")
+
+    # --- Leader description (model explanation) ---
     leader_description = ""
     if best_variant == 'collaborative':
         leader_description = "Uses matrix factorization (SVD) and popularity‑sorted predictions."
@@ -825,7 +845,6 @@ def results_page():
     elif best_variant == 'bert4rec':
         leader_description = "Transformer‑based sequence model that predicts the next movie in the user’s watch history."
 
-    st.success(f"🏆 **Current leader: {best_name}** ({best_rate:.2%} like rate)")
     st.info(f"📘 {leader_description}")
 
 # ── Sidebar ─────────────────────────────────────────────────────
